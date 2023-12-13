@@ -1,0 +1,8 @@
+app.Rproj
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+app/renv
+renv/
