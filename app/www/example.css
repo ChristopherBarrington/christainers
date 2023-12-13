@@ -1,0 +1,20 @@
+
+.awesome-checkbox.checkbox-inline {
+    margin-right: 50px;
+}
+
+.checkbox-inline+.checkbox-inline, .radio-inline+.radio-inline {
+    margin-left: 0;
+    margin-right: 50px;
+}
+
+.shiny-options-group {
+    display: grid;
+    grid-gap: 0 1%;
+    grid-template-columns: repeat(auto-fit, 25rem);
+    overflow-wrap: anywhere;
+}
+
+body {
+ /* overflow-y: hidden;*/
+}
