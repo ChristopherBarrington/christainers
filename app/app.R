@@ -13,6 +13,7 @@ library(shiny)
 library(htmltools)
 library(shinyWidgets)
 library(shinydashboard)
+library(DT)
 # library(shinydashboardPlus)
 
 library(gtools)
@@ -38,7 +39,8 @@ lockfiles %>%
 lockfiles_content %>%
 	llply(pluck, 'Packages') %>%
 	ldply(.id = 'lockfile_id', \(x) ldply(x, pluck, 'Version', .id = 'package')) %>%
-	rename(version = 'V1') -> packages
+	rename(version = 'V1') %>%
+	mutate_at('package', \(x) factor(x) |> fct_relevel(mixedsort)) -> packages
 
 c('Azimuth',
   'Seurat',
@@ -91,11 +93,13 @@ list(tags$head(tags$link(rel = 'stylesheet', type = 'text/css', href = 'example.
                           collapsible = FALSE,
                           collapsed = FALSE,
                           materialSwitch(inputId='show-full-table',
-                                         label='Show renvironments that include at least one selected package', 
+                                         label='Include all available renvironments, irrespective of package availability', 
                                          value=FALSE,
                                          status='success',
                                          right=TRUE),
-                          tableOutput(outputId = 'suggested_lockfiles_table')),
+                          tableOutput(outputId = 'suggested_lockfiles_table'),
+                          dataTableOutput(outputId='suggested_lockfiles_dtable'),
+                          uiOutput('suggested_lockfiles_ui')),
                       
                       # second
                       box(title = 'Favourite packages',
@@ -154,17 +158,62 @@ server <- function(input, output, session) {
 			filter(package %in% selected_packages) %>%
 			spread(key=package, value=version) %>%
 			when(length(selected_packages)==0 ~ lockfiles,
-			     show_full_table==TRUE ~ .,
+			     show_full_table==TRUE ~ left_join(x=lockfiles, y=., by='lockfile_id'),
 			     drop_na(.)) %>%
-			separate(col='lockfile_id', sep='/', into=c(NA, 'R version', NA, 'Renv lockfile name'))})
+			mutate(`All packages`=!if_any(-lockfile_id, is.na), .after=lockfile_id) %>%
+			separate(col='lockfile_id', sep='/', into=c(NA, 'R version', NA, 'Renv lockfile name')) %>%
+			arrange(desc(`All packages`), mixedsort(`R version`), `Renv lockfile name`) %>% print()})
 	
 	# render the output table of environments
-	output$suggested_lockfiles_table <- renderTable({
-		get_filtered_lockfiles()},
-		striped=TRUE,
-		hover=TRUE,
-		spacing='m',
-		na='-')
+	# renderDataTable({
+	# 	pos_glyph <- as.character(icon('check'))
+	# 	neg_glyph <- as.character(icon('xmark'))
+	#
+	# 	get_filtered_lockfiles() |>
+	# 		mutate_at('All packages', \(x) if_else(x, true=pos_glyph, false=neg_glyph)) |>
+	# 		mutate_at(vars(-'Renv lockfile name'), as.factor)},
+	# 	options=list(autoWidth=FALSE,
+	# 	             columnDefs=list(list(targets=c('Renv lockfile name', 'All packages'), searchable=FALSE),
+	# 	                             list(targets=c('All packages', get_selected_packages()), className='dt-center')),
+	# 	             dom='t',
+	# 	             paging=FALSE,
+	# 	             # preDrawCallback=\() {clear()},
+	# 	             searching=TRUE,
+	# 	             stateSave=TRUE),
+	# 	escape=FALSE,
+	# 	rownames=FALSE,
+	# 	filter='top',
+	# 	style='auto') -> output$suggested_lockfiles_dtable
+
+	# output$suggested_lockfiles_table <- renderTable({
+	# 	pos_glyph <- icon('check') |> as.character()
+	# 	neg_glyph <- icon('xmark') |> as.character()
+	#
+	# 	get_filtered_lockfiles() |>
+	# 		mutate_at('All packages', \(x) if_else(x, true=pos_glyph, false=neg_glyph)) %>% print()},
+	# 	striped=TRUE,
+	# 	hover=TRUE,
+	# 	spacing='m',
+	# 	na='-',
+	# 	sanitize.text.function=function(x) x)
+
+	output$suggested_lockfiles_ui <- renderUI({
+		pos_glyph <- icon('check') |> as.character()
+		neg_glyph <- icon('xmark') |> as.character()
+
+		get_filtered_lockfiles() |>
+			mutate_at('All packages', \(x) if_else(x, true=pos_glyph, false=neg_glyph)) -> data
+
+		renderTable({data},
+		            striped=TRUE,
+		            hover=TRUE,
+		            spacing='m',
+		            na='-',
+		            sanitize.text.function=function(x) x,
+		            align=c('l', 'l', rep(x='c', times={ncol(data) |> subtract(2)})) |> str_c(collapse=''),
+		            rownames=FALSE) -> output$table
+
+		tableOutput('table')})
 
 	# render the number of packages a user has selected
 	output$n_selected_packages_valuebox <- renderValueBox({
@@ -182,10 +231,10 @@ server <- function(input, output, session) {
 	# render the number of renvironments that satisfy the user's selected packages
 	output$n_suggested_lockfiles_valuebox <- renderValueBox({
 		filtered_lockfiles <- get_filtered_lockfiles()
-		n_filtered_lockfiles <- nrow(filtered_lockfiles) %>% as.character()
-		no_packages_selected <- ncol(filtered_lockfiles) %>% equals(2)
+		n_filtered_lockfiles <- filtered_lockfiles %>% pluck(3) %>% sum() |> as.character()
+		no_packages_selected <- filtered_lockfiles %>% ncol() %>% equals(3)
 
-		if(no_packages_selected) {
+		if(no_packages_selected | n_filtered_lockfiles=='0') {
 			value <- 0
 			subtitle <- 'Renvironments contain all selected packages'
 		} else {
