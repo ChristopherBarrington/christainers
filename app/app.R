@@ -162,7 +162,7 @@ server <- function(input, output, session) {
 			     drop_na(.)) %>%
 			mutate(`All packages`=!if_any(-lockfile_id, is.na), .after=lockfile_id) %>%
 			separate(col='lockfile_id', sep='/', into=c(NA, 'R version', NA, 'Renv lockfile name')) %>%
-			arrange(desc(`All packages`), mixedsort(`R version`), `Renv lockfile name`) %>% print()})
+			arrange(desc(`All packages`), mixedsort(`R version`), `Renv lockfile name`)})
 	
 	# render the output table of environments
 	# renderDataTable({
